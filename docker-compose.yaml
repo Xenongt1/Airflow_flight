@@ -1,4 +1,18 @@
 services:
+  airflow-init:
+    build: .
+    command: >
+      bash -c "airflow db init &&
+      airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_metadata:5432/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    depends_on:
+      - postgres_metadata
+    networks:
+      - airflow-network
+
   postgres_analytics:
     image: postgres:13
     environment:
@@ -39,7 +53,10 @@ services:
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     depends_on:
-      - postgres_metadata
+      postgres_metadata:
+        condition: service_started
+      airflow-init:
+        condition: service_completed_successfully
     networks:
       - airflow-network
 
@@ -57,7 +74,10 @@ services:
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     depends_on:
-      - postgres_metadata
+      postgres_metadata:
+        condition: service_started
+      airflow-init:
+        condition: service_completed_successfully
     networks:
       - airflow-network
 
