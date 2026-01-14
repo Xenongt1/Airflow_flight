@@ -33,6 +33,18 @@ def validate_data():
         df_clean['total_fare_bdt'] = pd.to_numeric(df_clean['total_fare_bdt'], errors='coerce')
         df_clean = df_clean[df_clean['total_fare_bdt'] > 0]
         
+        # 3. Standardize & Validate Strings
+        # Ensure consistent capitalizing
+        for col in ['airline', 'source', 'destination', 'source_name', 'destination_name']:
+             if col in df_clean.columns:
+                 df_clean[col] = df_clean[col].astype(str).str.strip().str.title()
+                 
+        # Validate Routes (Source != Destination)
+        invalid_routes = df_clean[df_clean['source'] == df_clean['destination']]
+        if not invalid_routes.empty:
+             print(f"Dropped {len(invalid_routes)} rows where Source == Destination.")
+             df_clean = df_clean[df_clean['source'] != df_clean['destination']]
+        
         # Select only relevant columns
         cols_to_keep = ['airline', 'source', 'destination', 'total_fare_bdt', 'departure_date_time']
         existing_cols = [c for c in cols_to_keep if c in df_clean.columns]

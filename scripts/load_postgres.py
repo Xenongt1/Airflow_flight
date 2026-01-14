@@ -22,9 +22,21 @@ def load_data():
             return
 
         # 2. Write to PostgreSQL Analytics
-        df_kpi.to_sql('flight_kpis', con=pg_engine, if_exists='replace', index=False)
-        
-        print("Successfully loaded KPIs into PostgreSQL 'flight_kpis' table.")
+        # Note: We use 'append' to respect the schema with SERIAL ID and TIMESTAMP defined in init_db.py
+        df_kpi.to_sql('flight_kpis', con=pg_engine, if_exists='append', index=False) 
+        print("Successfully loaded 'flight_kpis' into PostgreSQL.")
+
+        # 3. Load Seasonal KPIs
+        df_seasonal = pd.read_sql("SELECT * FROM seasonal_kpis", mysql_engine)
+        if not df_seasonal.empty:
+            df_seasonal.to_sql('seasonal_kpis', con=pg_engine, if_exists='append', index=False)
+            print("Successfully loaded 'seasonal_kpis' into PostgreSQL.")
+            
+        # 4. Load Route KPIs
+        df_route = pd.read_sql("SELECT * FROM route_kpis", mysql_engine)
+        if not df_route.empty:
+            df_route.to_sql('route_kpis', con=pg_engine, if_exists='append', index=False)
+            print("Successfully loaded 'route_kpis' into PostgreSQL.")
         
         # Verify
         result = pd.read_sql("SELECT count(*) as count FROM flight_kpis", pg_engine)

@@ -16,7 +16,9 @@ def init_mysql():
         # Drop table if exists to allow schema updates during development
         conn.execute(text("DROP TABLE IF EXISTS clean_flight_data;"))
         conn.execute(text("DROP TABLE IF EXISTS raw_flight_data;"))
-        conn.execute(text("DROP TABLE IF EXISTS staging_kpis;")) # Cleanup staging kpis too
+        conn.execute(text("DROP TABLE IF EXISTS staging_kpis;")) 
+        conn.execute(text("DROP TABLE IF EXISTS seasonal_kpis;"))
+        conn.execute(text("DROP TABLE IF EXISTS route_kpis;"))
         
         # Raw Data Table
         conn.execute(text("""
@@ -63,12 +65,34 @@ def init_mysql():
             );
         """))
         
+        # Seasonal KPIs Table
+        conn.execute(text("""
+            CREATE TABLE seasonal_kpis (
+                season VARCHAR(50),
+                avg_price FLOAT,
+                variation_from_overall FLOAT
+            );
+        """))
+
+        # Route KPIs Table
+        conn.execute(text("""
+            CREATE TABLE route_kpis (
+                source VARCHAR(100),
+                destination VARCHAR(100),
+                booking_count INT,
+                avg_price FLOAT
+            );
+        """))
+        
     print("MySQL tables created/reset.")
 
 def init_postgres():
     print("Creating PostgreSQL table...")
     with postgres_engine.connect() as conn:
         conn.execute(text("DROP TABLE IF EXISTS flight_kpis;"))
+        conn.execute(text("DROP TABLE IF EXISTS seasonal_kpis;"))
+        conn.execute(text("DROP TABLE IF EXISTS route_kpis;"))
+
         conn.execute(text("""
             CREATE TABLE flight_kpis (
                 kpi_id SERIAL PRIMARY KEY,
@@ -78,7 +102,28 @@ def init_postgres():
                 generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """))
-    print("PostgreSQL table 'flight_kpis' created/reset.")
+        
+        conn.execute(text("""
+            CREATE TABLE seasonal_kpis (
+                kpi_id SERIAL PRIMARY KEY,
+                season VARCHAR(50),
+                avg_price NUMERIC,
+                variation_from_overall NUMERIC,
+                generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """))
+
+        conn.execute(text("""
+            CREATE TABLE route_kpis (
+                kpi_id SERIAL PRIMARY KEY,
+                source VARCHAR(100),
+                destination VARCHAR(100),
+                booking_count INT,
+                avg_price NUMERIC,
+                generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """))
+    print("PostgreSQL tables created/reset.")
 
 if __name__ == "__main__":
     try:

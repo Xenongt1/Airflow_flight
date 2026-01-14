@@ -51,6 +51,21 @@ def ingest_data():
         # Ensure dates are parsed
         df['departure_date_time'] = pd.to_datetime(df['departure_date_time'], errors='coerce')
         df['arrival_date_time'] = pd.to_datetime(df['arrival_date_time'], errors='coerce')
+
+        # Ensure Total Fare exists or is calculated
+        # Some rows might vary, so we enforce the calculation to be safe if base/tax exist
+        if 'base_fare_bdt' in df.columns and 'tax_surcharge_bdt' in df.columns:
+            print("Verifying/Calculating 'total_fare_bdt'...")
+            # Fill NaNs with 0 for calculation safety
+            df['base_fare_bdt'] = pd.to_numeric(df['base_fare_bdt'], errors='coerce').fillna(0)
+            df['tax_surcharge_bdt'] = pd.to_numeric(df['tax_surcharge_bdt'], errors='coerce').fillna(0)
+            
+            # Recalculate to ensure consistency
+            df['total_fare_bdt'] = df['base_fare_bdt'] + df['tax_surcharge_bdt']
+        elif 'total_fare_bdt' not in df.columns:
+             # If we can't calculate it and it's missing, we have a problem.
+             # But let's assume if it's missing schema, we might fail insertion later.
+             print("Warning: 'total_fare_bdt' missing and source columns not found.")
         
         # Create Engine & Insert
         engine = create_engine(MYSQL_CONN)
