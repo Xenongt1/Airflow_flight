@@ -2,7 +2,7 @@
 
 An end-to-end data engineering pipeline orchestrated by **Apache Airflow** to analyze flight prices in Bangladesh. This project ingests raw CSV data, cleansizes and transforms it, and loads business-critical KPIs into a PostgreSQL data warehouse.
 
-## 🚀 Features
+## Features
 
 *   **Automated Ingestion**: Downloads and ingests flight data from Kaggle/local CSV.
 *   **Data Validation**: logical checks for negative fares, missing values, and valid route consistency.
@@ -12,7 +12,7 @@ An end-to-end data engineering pipeline orchestrated by **Apache Airflow** to an
     *   **Route Popularity**: Identifying top-traveled source-destination pairs.
 *   **Modern Stack**: Dockerized environment with Airflow, MySQL (Staging), and PostgreSQL (Analytics).
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 *   **Orchestration**: Apache Airflow 2.x
 *   **Language**: Python (Pandas, SQLAlchemy)
@@ -20,7 +20,7 @@ An end-to-end data engineering pipeline orchestrated by **Apache Airflow** to an
 *   **Database (Analytics)**: PostgreSQL 13
 *   **Infrastructure**: Docker & Docker Compose
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 ├── dags/                   # Airflow DAG definitions
@@ -35,7 +35,7 @@ An end-to-end data engineering pipeline orchestrated by **Apache Airflow** to an
 └── REPORT.md               # Detailed architectural report
 ```
 
-## ⚡ Usage
+## Usage
 
 ### Prerequisites
 *   Docker & Docker Compose installed.
@@ -78,6 +78,6 @@ An end-to-end data engineering pipeline orchestrated by **Apache Airflow** to an
     docker-compose exec postgres_analytics psql -U analytics_user -d flight_analytics -c "SELECT * FROM seasonal_kpis;"
     ```
 
-## 📊 Logic Details
+## Logic Details
 
 For a deep dive into the transformation logic, schema design, and challenges faced, please refer to [REPORT.md](./REPORT.md).
