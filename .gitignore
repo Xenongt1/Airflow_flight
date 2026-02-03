@@ -7,3 +7,5 @@ mysql_data/
 postgres_data/
 .env
 .venv/
+
+scripts/verify_analytics.py
