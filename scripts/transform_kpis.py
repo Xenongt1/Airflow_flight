@@ -40,10 +40,41 @@ def transform_data():
         print("Calculating Seasonal KPIs...")
         def get_season(date):
             if pd.isnull(date): return 'Unknown'
-            # Enhanced Seasonality for Bangladesh context (approximate)
-            # Winter: Nov-Feb, Pre-Monsoon: Mar-May, Monsoon: Jun-Oct
+            
+            # --- 1. CHECK FOR SPECIFIC HOLIDAYS (EID) FIRST ---
+            # Eid dates shift yearly (Lunar). We define a +/- 3 day window for "Peak Holiday Travel".
+            # Dates approximated for 2022-2025 context.
+            
+            eid_windows = [
+                # 2022
+                (pd.Timestamp('2022-05-02'), pd.Timestamp('2022-05-05')), # Eid-ul-Fitr
+                (pd.Timestamp('2022-07-09'), pd.Timestamp('2022-07-12')), # Eid-ul-Adha
+                # 2023
+                (pd.Timestamp('2023-04-21'), pd.Timestamp('2023-04-24')), # Eid-ul-Fitr
+                (pd.Timestamp('2023-06-28'), pd.Timestamp('2023-07-01')), # Eid-ul-Adha
+                # 2024
+                (pd.Timestamp('2024-04-10'), pd.Timestamp('2024-04-13')), # Eid-ul-Fitr
+                (pd.Timestamp('2024-06-16'), pd.Timestamp('2024-06-19')), # Eid-ul-Adha
+                 # 2025
+                (pd.Timestamp('2025-03-30'), pd.Timestamp('2025-04-02')), # Eid-ul-Fitr
+                (pd.Timestamp('2025-06-06'), pd.Timestamp('2025-06-09')), # Eid-ul-Adha
+            ]
+            
+            # Check if date falls in a holiday window
+            for start, end in eid_windows:
+                # Expand window slightly for travel rush (e.g., 2 days before to 2 days after)
+                rush_start = start - pd.Timedelta(days=2)
+                rush_end = end + pd.Timedelta(days=2)
+                
+                if rush_start.date() <= date.date() <= rush_end.date():
+                    return 'Peak: Eid Holiday'
+
+            # --- 2. FALLBACK TO METEOROLOGICAL SEASONS ---
+            # Winter: Nov-Feb (High Travel Season in BD)
+            # Pre-Monsoon: Mar-May
+            # Monsoon: Jun-Oct
             month = date.month
-            if month in [11, 12, 1, 2]: return 'Winter'
+            if month in [11, 12, 1, 2]: return 'Winter (High Season)'
             elif month in [3, 4, 5]: return 'Spring/Pre-Monsoon'
             else: return 'Monsoon/Summer'
             

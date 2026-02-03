@@ -24,11 +24,13 @@ The project implements an end-to-end ELT pipeline orchestrating data flow from a
 
 ### B. Seasonal Fare Variation
 *   **Logic**:
-    *   **Winter**: Nov, Dec, Jan, Feb
-    *   **Pre-Monsoon (Spring)**: Mar, Apr, May
-    *   **Monsoon/Summer**: Jun, Oct
+    *   **Peak Holiday Detection**: Specifically checks for **Eid-ul-Fitr** and **Eid-ul-Adha** windows (approx +/- 3 days) for years 2022-2025.
+    *   **Standard Seasons**:
+        *   **Winter**: Nov, Dec, Jan, Feb
+        *   **Pre-Monsoon (Spring)**: Mar, Apr, May
+        *   **Monsoon/Summer**: Jun, Oct
     *   Calculates average price per season and its deviation from the overall average.
-*   **Goal**: Identifying high-demand periods for dynamic pricing analysis.
+*   **Goal**: Identifying high-demand periods (especially Religious Holidays) for dynamic pricing analysis.
 
 ### C. Booking Count by Airline
 *   **Logic**: Count of total bookings (rows) per airline.
@@ -50,6 +52,8 @@ Each task is implemented as a `PythonOperator` execution of the modular scripts 
 *   **Data Quality**: Inconsistent capitalization (e.g., "dhaka" vs "Dhaka"). Implemented string standardization in the validation step.
 *   **Schema Mismatch**: The intermediate transformation step lost the primary key `id`, causing downstream failures in aggregation. Resolved by using `airline` column for counting instead of `id`.
 *   **Database Connectivity**: Docker networking required configuring specific hostnames (`mysql_staging`, `postgres_analytics`) instead of `localhost` for inter-container communication.
+*   **Idempotency & Data Duplication**: Initially, re-running the pipeline appended duplicate rows to PostgreSQL. 
+    *   *Resolution*: Implemented a "Delete-Write" strategy in `load_postgres.py`. The script now deletes any data generated on the *current day* before loading new records, ensuring the pipeline can be re-run safely multiple times a day without corrupting the analytics.
 
 ## 5. Usage
 To run the pipeline manually:
@@ -60,4 +64,10 @@ To run the pipeline manually:
     docker-compose exec airflow-scheduler python /opt/airflow/scripts/validate_data.py
     docker-compose exec airflow-scheduler python /opt/airflow/scripts/transform_kpis.py
     docker-compose exec airflow-scheduler python /opt/airflow/scripts/load_postgres.py
+    ```
+
+3. **Verify Data**:
+    A verification script is included to demonstrate correct querying patterns:
+    ```bash
+    docker-compose exec airflow-scheduler python /opt/airflow/scripts/verify_analytics.py
     ```

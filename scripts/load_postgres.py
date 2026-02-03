@@ -1,5 +1,5 @@
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 # Connection Strings (Internal Docker Network)
 MYSQL_CONN = 'mysql+mysqlconnector://staging_user:staging_password@mysql_staging:3306/flight_staging'
@@ -13,6 +13,16 @@ def load_data():
     pg_engine = create_engine(POSTGRES_CONN)
     
     try:
+        # Pre-Load: Clean up specific tables for the current day to ensure Idempotency
+        # This prevents duplicate entries if the pipeline is run multiple times on the same day.
+        # We use a transaction (begin) to ensure safety.
+        print("Cleaning up old data for today (Idempotency Check)...")
+        with pg_engine.begin() as conn:
+            conn.execute(text("DELETE FROM flight_kpis WHERE generated_at::DATE = CURRENT_DATE"))
+            conn.execute(text("DELETE FROM seasonal_kpis WHERE generated_at::DATE = CURRENT_DATE"))
+            conn.execute(text("DELETE FROM route_kpis WHERE generated_at::DATE = CURRENT_DATE"))
+        print("Cleanup complete.")
+
         # 1. Read KPIs from MySQL Staging
         df_kpi = pd.read_sql("SELECT * FROM staging_kpis", mysql_engine)
         print(f"Read {len(df_kpi)} rows from MySQL 'staging_kpis'.")
