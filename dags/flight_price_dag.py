@@ -8,8 +8,7 @@ sys.path.append('/opt/airflow/scripts')
 
 from ingest_csv import ingest_data
 from validate_data import validate_data
-from transform_kpis import transform_data
-from load_postgres import load_data
+from etl_star_schema import etl_process
 
 def start_pipeline():
     print("Flight Price Pipeline Started")
@@ -45,14 +44,10 @@ with DAG(
         python_callable=validate_data
     )
 
-    transform_task = PythonOperator(
-        task_id="transform_data",
-        python_callable=transform_data
+    # New ETL Task (Star Schema + SQL Transformation)
+    etl_task = PythonOperator(
+        task_id="etl_star_schema",
+        python_callable=etl_process
     )
 
-    load_task = PythonOperator(
-        task_id="load_postgres",
-        python_callable=load_data
-    )
-
-    start_task >> ingest_task >> validate_task >> transform_task >> load_task
+    start_task >> ingest_task >> validate_task >> etl_task

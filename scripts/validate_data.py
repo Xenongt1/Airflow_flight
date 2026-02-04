@@ -46,9 +46,9 @@ def validate_data():
              df_clean = df_clean[df_clean['source'] != df_clean['destination']]
         
         # Select only relevant columns
-        cols_to_keep = ['airline', 'source', 'destination', 'total_fare_bdt', 'departure_date_time']
-        existing_cols = [c for c in cols_to_keep if c in df_clean.columns]
-        df_final = df_clean[existing_cols]
+        # cols_to_keep = ['airline', 'source', 'destination', 'total_fare_bdt', 'departure_date_time']
+        # existing_cols = [c for c in cols_to_keep if c in df_clean.columns]
+        df_final = df_clean # Keep all columns for Star Schema
 
         print(f"Validation complete. {len(df_final)} valid rows remaining.")
         

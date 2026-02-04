@@ -1,83 +1,67 @@
 # Flight Price Analysis Pipeline
 
-An end-to-end data engineering pipeline orchestrated by **Apache Airflow** to analyze flight prices in Bangladesh. This project ingests raw CSV data, cleansizes and transforms it, and loads business-critical KPIs into a PostgreSQL data warehouse.
+An end-to-end data engineering pipeline orchestrated by **Apache Airflow** to analyze flight prices in Bangladesh. This project employs a strict **ELT (Extract, Load, Transform)** architecture where data is staged and modeled in MySQL before being loaded into a PostgreSQL Star Schema for analytics.
 
 ## Features
 
-*   **Automated Ingestion**: Downloads and ingests flight data from Kaggle/local CSV.
-*   **Data Validation**: logical checks for negative fares, missing values, and valid route consistency.
-*   **KPI Calculation**:
-    *   **Average Fare by Airline**: Benchmarking carrier pricing.
-    *   **Seasonal Trends**: Analysis of price variations across Winter, Spring, and Monsoon seasons.
-    *   **Route Popularity**: Identifying top-traveled source-destination pairs.
-*   **Modern Stack**: Dockerized environment with Airflow, MySQL (Staging), and PostgreSQL (Analytics).
+*   **Automated Ingestion**: Downloads flight data from Kaggle and loads it into MySQL.
+*   **Star Schema Modeling**: Core flight data is organized into Fact and Dimension tables for high-performance querying.
+*   **Incremental Loading**: Uses `loaded_at` timestamps to efficiently track and load data history without duplicates.
+*   **SQL-Native Transformations**: Business logic (seasons, holidays, joins) is implemented as pure SQL for maintainability.
+*   **KPI Views**: Real-time metrics computed via PostgreSQL Views (Avg Fare, Popular Routes, Seasonal Trends).
 
 ## Tech Stack
 
 *   **Orchestration**: Apache Airflow 2.x
-*   **Language**: Python (Pandas, SQLAlchemy)
-*   **Database (Staging)**: MySQL 8.0
-*   **Database (Analytics)**: PostgreSQL 13
+*   **Databases**: MySQL 8.0 (Staging), PostgreSQL 13 (Analytics)
+*   **Language**: Python 3.x (Pandas, SQLAlchemy)
 *   **Infrastructure**: Docker & Docker Compose
 
 ## Project Structure
 
 ```
-├── dags/                   # Airflow DAG definitions
-├── data/                   # Raw data storage (mapped to container)
-├── scripts/                # ETL Logic
-│   ├── ingest_csv.py       # Data Loading & Total Fare Calc
-│   ├── validate_data.py    # Cleaning & Validation
-│   ├── transform_kpis.py   # Business Logic & Aggregations
-│   ├── load_postgres.py    # Loading to Data Warehouse
-│   └── init_db.py          # Schema Initialization
+├── dags/                   # Airflow DAG: Ingest -> Validate -> ETL
+├── sql/                    
+│   └── etl_star_schema_mysql.sql # Core SQL Transformation logic
+├── scripts/                
+│   ├── ingest_csv.py       # Ingests Kaggle data to MySQL
+│   ├── etl_star_schema.py  # Orchestrates MySQL transformation & loads to Postgres
+│   ├── verify_analytics.py # Validates final KPIs in Postgres
+│   └── init_db.py          # Schema and Views initialization
 ├── docker-compose.yaml     # Container orchestration
-└── REPORT.md               # Detailed architectural report
+└── REPORT.md               # Detailed architectural and design report
 ```
 
 ## Usage
 
-### Prerequisites
-*   Docker & Docker Compose installed.
+### 1. Start the Environment
+```bash
+docker-compose up -d --build
+```
 
-### Quick Start
+### 2. Initialize Databases
+Creates all tables, foreign keys, and KPI views in both MySQL and PostgreSQL.
+```bash
+docker-compose exec airflow-scheduler python /opt/airflow/scripts/init_db.py
+```
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/Xenongt1/Airflow_flight.git
-    cd Airflow_flight
-    ```
+### 3. Run the Pipeline
+Access the Airflow UI at `http://localhost:8081` (Admin/Admin) and trigger the **`flight_price_analysis_pipeline`**.
 
-2.  **Start the environment**:
-    ```bash
-    docker-compose up -d
-    ```
+Alternatively, run manually:
+```bash
+# Part 1: Ingest
+docker-compose exec airflow-scheduler python /opt/airflow/scripts/ingest_csv.py
 
-3.  **Initialize Databases**:
-    ```bash
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/init_db.py
-    ```
+# Part 2: Model & Load (Star Schema + Incremental)
+docker-compose exec airflow-scheduler python /opt/airflow/scripts/etl_star_schema.py
+```
 
-4.  **Run the Pipeline**:
-    You can trigger the DAG `flight_price_analysis_pipeline` from the Airflow UI at `http://localhost:8081` (User/Pass: `admin`/`admin`), or run the scripts manually:
-    ```bash
-    # Ingest
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/ingest_csv.py
-    
-    # Process
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/validate_data.py
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/transform_kpis.py
-    
-    # Load
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/load_postgres.py
-    ```
+### 4. Verify Results
+Check the computed KPIs and load history:
+```bash
+docker-compose exec airflow-scheduler python /opt/airflow/scripts/verify_analytics.py
+```
 
-5.  **Verify Results**:
-    Access the PostgreSQL warehouse:
-    ```bash
-    docker-compose exec postgres_analytics psql -U analytics_user -d flight_analytics -c "SELECT * FROM seasonal_kpis;"
-    ```
-
-## Logic Details
-
-For a deep dive into the transformation logic, schema design, and challenges faced, please refer to [REPORT.md](./REPORT.md).
+---
+For detailed information on the data model and logic, see **[REPORT.md](./REPORT.md)**.

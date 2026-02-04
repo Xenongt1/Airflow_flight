@@ -1,73 +1,60 @@
 # Flight Price Analysis Pipeline - Final Report
 
 ## 1. Pipeline Architecture
-The project implements an end-to-end ELT pipeline orchestrating data flow from a CSV source to a PostgreSQL data warehouse using Apache Airflow.
+The project implements a strict **Staging vs. Data Warehouse** architecture using Apache Airflow. All data processing and transformation occur in the Staging layer (MySQL), ensuring the Analytics layer (PostgreSQL) receives only pristine, modeled data.
 
 ### Components:
 *   **Orchestration**: Apache Airflow (Dockerized).
 *   **Source**: Kaggle Flight Price Dataset (CSV).
-*   **Staging**: MySQL (Handling raw and cleaned data).
-*   **Data Warehouse**: PostgreSQL (Storing final KPIs for analytics).
-*   **Containerization**: Docker Compose managing all services.
+*   **Staging Layer**: MySQL 8.0 (Stores Raw Data + Performs Star Schema Transformation).
+*   **Analytics Layer**: PostgreSQL (Stores Final Star Schema + KPI Views).
 
 ### Data Flow:
-1.  **Ingestion**: `ingest_csv.py` downloads the CSV and loads it into MySQL `raw_flight_data`. It also calculates `Total Fare` if missing.
-2.  **Validation**: `validate_data.py` cleanses the data (standardizing names, handling nulls, verifying routes) and stores it in `clean_flight_data`.
-3.  **Transformation**: `transform_kpis.py` computes business metrics (Avg Fare, Seasonal Trends, Popular Routes) and stores them in MySQL `staging_kpis`, `seasonal_kpis`, and `route_kpis`.
-4.  **Loading**: `load_postgres.py` moves the final KPIs to PostgreSQL tables for consumption.
+1.  **Ingestion** (`ingest_csv.py`): 
+    *   Downloads CSV from Kaggle.
+    *   Loads raw data into MySQL table `raw_flight_data`.
+2.  **Transformation & Modeling** (`etl_star_schema.py`):
+    *   Executes SQL Script `sql/etl_star_schema_mysql.sql` **inside MySQL**.
+    *   **Dimension Population**: Extracts unique Airlines, Locations, and Dates (including Season/Holiday logic) into `dim_` tables.
+    *   **Fact Population**: Joins cleaned data with Dimensions to create `fact_flights`.
+3.  **Incremental Loading** (`etl_star_schema.py`):
+    *   Transfers the modeled Star Schema from MySQL to PostgreSQL.
+    *   Uses a **Timestamp-based Incremental Strategy** for the Fact table.
+    *   Dimensions are handled via **Upsert logic** (only new records are added).
 
-## 2. KPIs Implemented
+## 2. Incremental Loading Logic
+To support scalable data growth and history tracking, the pipeline implements an incremental strategy:
 
-### A. Average Fare by Airline
-*   **Logic**: Group by `Airline` and calculate the mean of `Total Fare`.
-*   **Goal**: Benchmarking pricing strategies across carriers.
+-   **`loaded_at` Timestamps**: Every record in `fact_flights` is tagged with the exact time it entered the Data Warehouse.
+-   **Idempotency**: If the pipeline is re-run on the same day, it automatically removes existing records for that day before reloading, preventing duplicates while allowing for partial-day updates.
+-   **Dimension Upserts**: For Dimension tables (Airline, Location, etc.), the script checks for existing IDs and only inserts records that don't already exist.
 
-### B. Seasonal Fare Variation
-*   **Logic**:
-    *   **Peak Holiday Detection**: Specifically checks for **Eid-ul-Fitr** and **Eid-ul-Adha** windows (approx +/- 3 days) for years 2022-2025.
-    *   **Standard Seasons**:
-        *   **Winter**: Nov, Dec, Jan, Feb
-        *   **Pre-Monsoon (Spring)**: Mar, Apr, May
-        *   **Monsoon/Summer**: Jun, Oct
-    *   Calculates average price per season and its deviation from the overall average.
-*   **Goal**: Identifying high-demand periods (especially Religious Holidays) for dynamic pricing analysis.
+## 3. Data Modeling: Star Schema
+The schema is standardized across MySQL (Staging) and Postgres (Analytics).
 
-### C. Booking Count by Airline
-*   **Logic**: Count of total bookings (rows) per airline.
-*   **Goal**: Measuring market share and popularity.
+### Tables:
+*   **`fact_flights`**: Core metrics (Fare, Duration, FKs) + `loaded_at`.
+*   **`dim_date`**: Attributes: `Day`, `Month`, `Season`, `Is_Holiday_Window`.
+*   **`dim_airline`**: Unique Airline Names.
+*   **`dim_location`**: Unique Source/Destination Cities.
+*   **`dim_flight_details`**: Flight Class, Stopovers, Aircraft Type.
 
-### D. Most Popular Routes
-*   **Logic**: Group by `Source` and `Destination`, count bookings, and sort descending.
-*   **Goal**: Identifying top traveled routes.
+## 4. Key Performance Indicators (KPIs)
+KPIs are implemented as **SQL Views** in PostgreSQL for real-time computation:
 
-## 3. DAG Description
-The Airflow DAG `flight_price_analysis_pipeline` defines the dependency chain:
+-   **`kpi_airline_stats`**: Average Fare & Booking Count per Airline.
+-   **`kpi_seasonal_variation`**: Price comparison between Peak Seasons (Eid/Winter) and Off-Peak.
+-   **`kpi_popular_routes`**: Top traveled routes by booking volume.
 
-`start_pipeline` >> `ingest_data` >> `validate_data` >> `transform_data` >> `load_postgres`
+## 5. Data Verification
+The `verify_analytics.py` script provides a quick way to validate the pipeline results and check the load history.
 
-Each task is implemented as a `PythonOperator` execution of the modular scripts located in `/opt/airflow/scripts`.
+```bash
+docker-compose exec airflow-scheduler python /opt/airflow/scripts/verify_analytics.py
+```
 
-## 4. Challenges & Resolutions
-*   **Total Fare Calculation**: source data might miss the total fare. Added logic to compute it dynamically (`Base + Tax`) during ingestion.
-*   **Data Quality**: Inconsistent capitalization (e.g., "dhaka" vs "Dhaka"). Implemented string standardization in the validation step.
-*   **Schema Mismatch**: The intermediate transformation step lost the primary key `id`, causing downstream failures in aggregation. Resolved by using `airline` column for counting instead of `id`.
-*   **Database Connectivity**: Docker networking required configuring specific hostnames (`mysql_staging`, `postgres_analytics`) instead of `localhost` for inter-container communication.
-*   **Idempotency & Data Duplication**: Initially, re-running the pipeline appended duplicate rows to PostgreSQL. 
-    *   *Resolution*: Implemented a "Delete-Write" strategy in `load_postgres.py`. The script now deletes any data generated on the *current day* before loading new records, ensuring the pipeline can be re-run safely multiple times a day without corrupting the analytics.
+## 6. How to Run
+1.  **Start Services**: `docker-compose up -d --build`
+2.  **Initialize DBs**: `docker-compose exec airflow-scheduler python /opt/airflow/scripts/init_db.py`
+3.  **Run Pipeline**: Access Airflow at `http://localhost:8081` and toggle `flight_price_analysis_pipeline`.
 
-## 5. Usage
-To run the pipeline manually:
-1.  Ensure Docker is running.
-2.  Trigger the DAG via Airflow UI or run scripts manually:
-    ```bash
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/ingest_csv.py
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/validate_data.py
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/transform_kpis.py
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/load_postgres.py
-    ```
-
-3. **Verify Data**:
-    A verification script is included to demonstrate correct querying patterns:
-    ```bash
-    docker-compose exec airflow-scheduler python /opt/airflow/scripts/verify_analytics.py
-    ```

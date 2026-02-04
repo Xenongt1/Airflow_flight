@@ -52,6 +52,7 @@ services:
       - ./scripts:/opt/airflow/scripts
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
+      - ./sql:/opt/airflow/sql
     depends_on:
       postgres_metadata:
         condition: service_started
@@ -73,6 +74,7 @@ services:
       - ./scripts:/opt/airflow/scripts
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
+      - ./sql:/opt/airflow/sql
     depends_on:
       postgres_metadata:
         condition: service_started
