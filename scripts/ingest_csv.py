@@ -3,6 +3,7 @@ from sqlalchemy import create_engine
 import os
 import kagglehub
 import glob
+import hashlib # For row hashing
 
 # Connection String (Internal Docker Network)
 MYSQL_CONN = 'mysql+mysqlconnector://staging_user:staging_password@mysql_staging:3306/flight_staging'
@@ -67,11 +68,46 @@ def ingest_data():
              # But let's assume if it's missing schema, we might fail insertion later.
              print("Warning: 'total_fare_bdt' missing and source columns not found.")
         
-        # Create Engine & Insert
-        engine = create_engine(MYSQL_CONN)
-        df.to_sql('raw_flight_data', con=engine, if_exists='append', index=False)
+        # --- Hashing for De-duplication ---
+        print("Generating row hashes for idempotency...")
         
-        print(f"Ingested {len(df)} rows into 'raw_flight_data'.")
+        def generate_hash(row):
+            # Sort index to ensure consistent column order if that ever changes, though apply(axis=1) usually preserves it.
+            # Convert to string, concatenate, encode, then hash.
+            row_str = "".join(row.astype(str))
+            return hashlib.sha256(row_str.encode("utf-8")).hexdigest()
+
+        # Generate hash for every row in the dataframe
+        df['row_hash'] = df.apply(generate_hash, axis=1)
+
+        # Create Engine
+        engine = create_engine(MYSQL_CONN)
+
+        # Check existing hashes in the database to prevent duplicates
+        try:
+            print("Fetching existing hashes from DB...")
+            existing_hashes_df = pd.read_sql("SELECT row_hash FROM raw_flight_data", engine)
+            existing_hashes = set(existing_hashes_df['row_hash'].tolist())
+            print(f"Found {len(existing_hashes)} existing records.")
+        except Exception as e:
+            # If table doesn't exist or error, assume no history
+            print(f"Could not fetch existing hashes (Table might be new): {e}")
+            existing_hashes = set()
+
+        # Filter out rows that already exist
+        initial_count = len(df)
+        df_new = df[~df['row_hash'].isin(existing_hashes)]
+        filtered_count = len(df_new)
+
+        if filtered_count < initial_count:
+            print(f"Duplicate/Existing rows skipped: {initial_count - filtered_count}")
+
+        if filtered_count > 0:
+            print(f"Inserting {filtered_count} new rows into 'raw_flight_data'...")
+            df_new.to_sql('raw_flight_data', con=engine, if_exists='append', index=False)
+            print("Ingestion complete.")
+        else:
+            print("No new data found. All rows already exist in DB.")
         
     except Exception as e:
         print(f"Error during ingestion: {e}")

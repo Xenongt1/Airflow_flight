@@ -47,7 +47,8 @@ def init_mysql():
                 tax_surcharge_bdt FLOAT,
                 total_fare_bdt FLOAT,
                 seasonality VARCHAR(50),
-                days_before_departure INT
+                days_before_departure INT,
+                row_hash VARCHAR(64) UNIQUE
             );
         """))
         

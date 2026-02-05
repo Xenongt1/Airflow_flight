@@ -6,3 +6,4 @@ psycopg2-binary
 apache-airflow-providers-mysql
 apache-airflow-providers-postgres
 kagglehub
+apache-airflow-providers-slack

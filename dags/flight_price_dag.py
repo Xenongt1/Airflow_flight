@@ -13,11 +13,43 @@ from etl_star_schema import etl_process
 def start_pipeline():
     print("Flight Price Pipeline Started")
 
+# Slack Alert Function
+from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
+
+def task_fail_slack_alert(context):
+    slack_webhook_token = os.environ.get('SLACK_WEBHOOK_URL')
+    if not slack_webhook_token:
+        print("No SLACK_WEBHOOK_URL defined, skipping alert.")
+        return
+
+    # Extract info from context
+    dag_run = context.get('dag_run')
+    task_instance = context.get('task_instance')
+    date = context.get('execution_date')
+    
+    msg = (f":red_circle: *Task Failed*\n"
+           f"*Task*: {task_instance.task_id}\n"
+           f"*Dag*: {dag_run.dag_id}\n"
+           f"*Execution Time*: {date}\n"
+           f"*Log Url*: {task_instance.log_url}")
+
+    failed_alert = SlackWebhookOperator(
+        task_id='slack_test',
+        http_conn_id=None,
+        webhook_token=slack_webhook_token,
+        message=msg,
+        username='Airflow'
+    )
+    return failed_alert.execute(context=context)
+
+import os
+
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
     'email_on_failure': False,
     'retries': 0,
+    'on_failure_callback': task_fail_slack_alert
 }
 
 with DAG(
