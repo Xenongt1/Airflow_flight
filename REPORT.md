@@ -60,19 +60,24 @@ The pipeline is defined in a single DAG: **`flight_price_analysis_pipeline`**.
 
 Key Performance Indicators are implemented as **Materialized Views** (or standard Views) in PostgreSQL, ensuring real-time consistency with the underlying Star Schema.
 
-### 1. Airline Pricing Performance (`kpi_airline_stats`)
+### 1. Average Fare by Airline (`kpi_airline_stats`)
 *   **Definition**: Comparison of average fares across different carriers.
-*   **Logic**: Aggregates `fact_flights` by `dim_airline`. Calculates `AVG(total_fare_bdt)` and `COUNT(bookings)`.
+*   **Logic**: Aggregates `fact_flights` by `dim_airline`. Calculates `AVG(total_fare_bdt)`.
 *   **Usage**: Identifies budget vs. premium carriers.
 
-### 2. Seasonal Price Surge (`kpi_seasonal_variation`)
+### 2. Booking Count by Airline (`kpi_airline_stats`)
+*   **Definition**: Total volume of bookings secured by each airline.
+*   **Logic**: Aggregates `fact_flights` by `dim_airline`. Calculates `COUNT(bookings)`.
+*   **Usage**: Tracks market share and volume for each airline.
+
+### 3. Seasonal Price Surge (`kpi_seasonal_variation`)
 *   **Definition**: Measures how much flight prices increase during specific holiday windows compared to the yearly average.
 *   **Logic**:
     *   `dim_date` classifies dates into 'Eid Holiday', 'Winter', 'Monsoon', etc.
     *   Computes `Average Season Price - Overall Average Price`.
 *   **Usage**: Critical for analyzing demand surges during festivals.
 
-### 3. Route Popularity (`kpi_popular_routes`)
+### 4. Route Popularity (`kpi_popular_routes`)
 *   **Definition**: Identifies high-traffic flight corridors.
 *   **Logic**: Group by `Source City` and `Destination City` from `dim_location`. Sorts by `COUNT(*)` descending.
 *   **Usage**: Helps in understanding travel patterns (e.g., Dhaka -> Chittagong).
