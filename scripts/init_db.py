@@ -296,12 +296,13 @@ def init_postgres():
         conn.execute(text("""
             CREATE VIEW kpi_airline_stats AS
             SELECT 
+                f.loaded_at::DATE as load_date,
                 a.airline_name,
                 COUNT(f.fact_id) as total_bookings,
                 ROUND(AVG(f.total_fare_bdt), 2) as avg_fare
             FROM fact_flights f
             JOIN dim_airline a ON f.airline_id = a.airline_id
-            GROUP BY a.airline_name;
+            GROUP BY f.loaded_at::DATE, a.airline_name;
         """))
 
         # 2. KPI: Seasonal Variation
@@ -310,20 +311,27 @@ def init_postgres():
             CREATE VIEW kpi_seasonal_variation AS
             WITH SeasonStats AS (
                 SELECT 
+                    f.loaded_at::DATE as load_date,
                     d.season,
                     ROUND(AVG(f.total_fare_bdt), 2) as avg_season_price
                 FROM fact_flights f
                 JOIN dim_date d ON f.date_id = d.date_id
-                GROUP BY d.season
+                GROUP BY f.loaded_at::DATE, d.season
             ),
             OverallStats AS (
-                SELECT AVG(total_fare_bdt) as overall_avg FROM fact_flights
+                SELECT 
+                    loaded_at::DATE as load_date,
+                    AVG(total_fare_bdt) as overall_avg 
+                FROM fact_flights
+                GROUP BY loaded_at::DATE
             )
             SELECT 
+                s.load_date,
                 s.season,
                 s.avg_season_price,
                 ROUND(s.avg_season_price - o.overall_avg, 2) as variation_from_overall
-            FROM SeasonStats s, OverallStats o;
+            FROM SeasonStats s
+            JOIN OverallStats o ON s.load_date = o.load_date;
         """))
 
         # 3. KPI: Popular Routes
@@ -331,6 +339,7 @@ def init_postgres():
         conn.execute(text("""
             CREATE VIEW kpi_popular_routes AS
             SELECT 
+                f.loaded_at::DATE as load_date,
                 src.city_name as source_city,
                 dst.city_name as destination_city,
                 COUNT(f.fact_id) as booking_count,
@@ -338,8 +347,8 @@ def init_postgres():
             FROM fact_flights f
             JOIN dim_location src ON f.source_location_id = src.location_id
             JOIN dim_location dst ON f.destination_location_id = dst.location_id
-            GROUP BY src.city_name, dst.city_name
-            ORDER BY booking_count DESC;
+            GROUP BY f.loaded_at::DATE, src.city_name, dst.city_name
+            ORDER BY f.loaded_at::DATE DESC, booking_count DESC;
         """))
 
     print("PostgreSQL tables and views created/reset.")

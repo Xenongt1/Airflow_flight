@@ -1,11 +1,38 @@
+# Python stuff
 __pycache__/
 *.pyc
-.DS_Store
-logs/
-data/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+
+# Databases & Data
+data/*.csv
+data/*.json
 mysql_data/
 postgres_data/
-.env
-.venv/
 
+# Environment
+.env
+
+# OS/IDEs
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Airflow
+logs/
+airflow.db
+airflow.cfg
+unittests.cfg
+
+# Project Specific Test & Verification Scripts
 scripts/verify_analytics.py
+scripts/verify_deduplication.py
+scripts/test_smart_retraining.py

@@ -48,12 +48,20 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - RETRAIN_THRESHOLD_PERCENT=${RETRAIN_THRESHOLD_PERCENT}
+      - MIN_RECORDS_FOR_TRAINING=${MIN_RECORDS_FOR_TRAINING}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./scripts:/opt/airflow/scripts
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./sql:/opt/airflow/sql
+      - C:/Users/MubarakTijani/flight-fare-prediction:/opt/airflow/ml_pipeline
     depends_on:
       postgres_metadata:
         condition: service_started
@@ -71,12 +79,20 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - RETRAIN_THRESHOLD_PERCENT=${RETRAIN_THRESHOLD_PERCENT}
+      - MIN_RECORDS_FOR_TRAINING=${MIN_RECORDS_FOR_TRAINING}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./scripts:/opt/airflow/scripts
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./sql:/opt/airflow/sql
+      - C:/Users/MubarakTijani/flight-fare-prediction:/opt/airflow/ml_pipeline
     depends_on:
       postgres_metadata:
         condition: service_started

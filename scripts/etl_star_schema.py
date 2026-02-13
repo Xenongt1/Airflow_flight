@@ -100,9 +100,38 @@ def etl_process():
         if not df_fact.empty:
             # Add timestamp
             df_fact['loaded_at'] = current_time
+
+            # Sync Sequence (Fix for Duplicate Key Error)
+            with pg_engine.begin() as pg_conn:
+                pg_conn.execute(text("SELECT setval(pg_get_serial_sequence('fact_flights', 'fact_id'), coalesce(max(fact_id),0) + 1, false) FROM fact_flights;"))
             
-            df_fact.to_sql('fact_flights', pg_engine, if_exists='append', index=False)
-            print(f"Loaded {len(df_fact)} rows into fact_flights at {current_time}.")
+            # Drop fact_id to let Postgres generate its own unique IDs
+            if 'fact_id' in df_fact.columns:
+                df_fact = df_fact.drop(columns=['fact_id'])
+
+            # --- Deduplication Logic: Check against existing data ---
+            print("Checking for existing records to prevent duplicates...")
+            # We use a composite key of date_id, airline_id, departure_time, and total_fare_bdt as a "Business Key"
+            existing_composite = pd.read_sql("SELECT date_id, airline_id, departure_time, total_fare_bdt FROM fact_flights", pg_engine)
+            
+            if not existing_composite.empty:
+                # Create a tuple signature for comparison
+                # Ensure types match (convert to string/native types if needed, but pandas usually handles this well for standard types)
+                existing_set = set(zip(existing_composite['date_id'], existing_composite['airline_id'], existing_composite['departure_time'], existing_composite['total_fare_bdt']))
+                
+                # Filter df_fact
+                initial_count = len(df_fact)
+                df_fact = df_fact[~df_fact.apply(lambda x: (x['date_id'], x['airline_id'], x['departure_time'], x['total_fare_bdt']) in existing_set, axis=1)]
+                filtered_count = len(df_fact)
+                
+                if initial_count != filtered_count:
+                    print(f"Skipping {initial_count - filtered_count} duplicate records that already exist in Postgres.")
+            
+            if not df_fact.empty:
+                df_fact.to_sql('fact_flights', pg_engine, if_exists='append', index=False, method='multi', chunksize=5000)
+                print(f"Loaded {len(df_fact)} new rows into fact_flights at {current_time}.")
+            else:
+                print("No new unique records to load.")
         
         print("ETL Complete: Incremental Data loaded into PostgreSQL.")
         

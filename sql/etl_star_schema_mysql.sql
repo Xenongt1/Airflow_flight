@@ -93,6 +93,8 @@ SELECT DISTINCT
 FROM clean_flight_data;
 
 -- 5. Populate Fact Table
+TRUNCATE TABLE fact_flights;
+
 INSERT INTO
     fact_flights (
         date_id,
