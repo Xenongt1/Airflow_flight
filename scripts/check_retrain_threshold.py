@@ -44,73 +44,78 @@ def check_new_data_exists():
         engine = create_engine(connection_string)
         
         with engine.connect() as conn:
-            # Get today's date
-            today = datetime.now().strftime('%Y-%m-%d')
-            
-            # Count total existing records (excluding today's load)
-            total_existing_query = text("""
-                SELECT COUNT(*) as total_existing
-                FROM fact_flights
-                WHERE loaded_at::DATE < :today
+            # 1. Get the last training timestamp from metadata
+            last_training_query = text("""
+                SELECT training_timestamp, records_trained_on
+                FROM ml_metadata.model_training_log
+                WHERE model_name = 'flight_fare_predictor'
+                ORDER BY training_timestamp DESC
+                LIMIT 1
             """)
-            result = conn.execute(total_existing_query, {"today": today})
-            total_existing = result.fetchone()[0]
+            result = conn.execute(last_training_query)
+            row = result.fetchone()
             
-            # Count new records loaded today
+            # 2. Get the total current record count
+            total_current_query = text("SELECT COUNT(*) FROM fact_flights")
+            total_current = conn.execute(total_current_query).scalar() or 0
+            
+            if row is None:
+                if total_current >= MIN_RECORDS_FOR_TRAINING:
+                    print(f"✅ No previous training found. Initial data available: {total_current:,} records.")
+                    print("Decision: TRIGGER TRAINING (initial load)")
+                    print("=" * 60)
+                    return 'train_ml_model'
+                else:
+                    print(f"⚠️  No previous training found, but insufficient data: {total_current:,}/{MIN_RECORDS_FOR_TRAINING}")
+                    print("Decision: SKIP TRAINING")
+                    print("=" * 60)
+                    return 'skip_training'
+            
+            last_training_time = row[0]
+            records_at_last_train = row[1] or 0
+            
+            # 3. Count new records added SINCE the last training
             new_records_query = text("""
                 SELECT COUNT(*) as new_records
                 FROM fact_flights
-                WHERE loaded_at::DATE = :today
+                WHERE loaded_at > :last_train
             """)
-            result = conn.execute(new_records_query, {"today": today})
+            result = conn.execute(new_records_query, {"last_train": last_training_time})
             new_records = result.fetchone()[0]
             
-            # Handle edge cases
-            if total_existing == 0 and new_records == 0:
-                print("⚠️  No data found in fact_flights table.")
-                print("Decision: SKIP TRAINING (no data available)")
-                print("=" * 60)
-                return 'skip_training'
+            # Calculate percentage change based on what the model was LAST trained on
+            # If records_at_last_train is 0 for some reason, use total_current - new_records
+            base_count = records_at_last_train if records_at_last_train > 0 else (total_current - new_records)
             
-            if total_existing == 0 and new_records > 0:
-                print(f"✅ Initial data load detected: {new_records:,} records")
-                print("Decision: TRIGGER TRAINING (initial load)")
-                print("=" * 60)
-                return 'train_ml_model'
-            
-            if new_records == 0:
-                print(f"📊 Total existing records: {total_existing:,}")
-                print(f"📥 New records loaded today: 0")
-                print("Decision: SKIP TRAINING (no new data)")
-                print("=" * 60)
-                return 'skip_training'
-            
-            # Calculate percentage change
-            percentage_change = (new_records / total_existing) * 100
+            if base_count > 0:
+                percentage_change = (new_records / base_count) * 100
+            else:
+                percentage_change = 100.0 if new_records > 0 else 0.0
             
             # Display statistics
-            print(f"📊 Total existing records: {total_existing:,}")
-            print(f"📥 New records loaded today: {new_records:,}")
-            print(f"📈 Percentage change: {percentage_change:.2f}%")
-            print(f"🎯 Configured threshold: {RETRAIN_THRESHOLD_PERCENT:.2f}%")
-            print(f"🔢 Minimum records required: {MIN_RECORDS_FOR_TRAINING:,}")
+            print(f"🕒 Last training occurred at: {last_training_time}")
+            print(f"📊 Records at last training: {base_count:,}")
+            print(f"📥 New records accumulated since then: {new_records:,}")
+            print(f"📈 Cumulative data growth: {percentage_change:.2f}%")
+            print(f"🎯 Threshold for retraining: {RETRAIN_THRESHOLD_PERCENT:.2f}%")
+            print(f"🔢 Min new records required: {MIN_RECORDS_FOR_TRAINING:,}")
             print("-" * 60)
             
             # Decision logic
             if new_records < MIN_RECORDS_FOR_TRAINING:
-                print(f"⚠️  New records ({new_records:,}) below minimum threshold ({MIN_RECORDS_FOR_TRAINING:,})")
-                print("Decision: SKIP TRAINING (insufficient new data)")
+                print(f"⏭️  New records ({new_records:,}) below minimum required ({MIN_RECORDS_FOR_TRAINING:,})")
+                print("Decision: SKIP TRAINING")
                 print("=" * 60)
                 return 'skip_training'
             
             if percentage_change >= RETRAIN_THRESHOLD_PERCENT:
-                print(f"✅ Change ({percentage_change:.2f}%) exceeds threshold ({RETRAIN_THRESHOLD_PERCENT:.2f}%)")
-                print("Decision: TRIGGER TRAINING (significant data change)")
+                print(f"✅ Growth ({percentage_change:.2f}%) meets threshold ({RETRAIN_THRESHOLD_PERCENT:.2f}%)")
+                print("Decision: TRIGGER TRAINING")
                 print("=" * 60)
                 return 'train_ml_model'
             else:
-                print(f"⏭️  Change ({percentage_change:.2f}%) below threshold ({RETRAIN_THRESHOLD_PERCENT:.2f}%)")
-                print("Decision: SKIP TRAINING (change not significant)")
+                print(f"⏭️  Growth ({percentage_change:.2f}%) below threshold")
+                print("Decision: SKIP TRAINING")
                 print("=" * 60)
                 return 'skip_training'
                 
