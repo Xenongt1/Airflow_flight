@@ -1,3 +1,6 @@
+-- Create schema if it doesn't exist
+CREATE SCHEMA IF NOT EXISTS ml_metadata;
+
 -- Metadata table to track ML model training history
 -- This helps us avoid retraining when there's no new data
 
@@ -15,6 +18,3 @@ CREATE TABLE IF NOT EXISTS ml_metadata.model_training_log (
 
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_training_timestamp ON ml_metadata.model_training_log (training_timestamp DESC);
-
--- Create schema if it doesn't exist
-CREATE SCHEMA IF NOT EXISTS ml_metadata;

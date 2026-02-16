@@ -21,13 +21,26 @@ import os
 # Slack Alert Function
 from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
 
-def task_fail_slack_alert(context):
-    slack_webhook_token = os.environ.get('SLACK_WEBHOOK_URL')
-    if not slack_webhook_token:
-        print("No SLACK_WEBHOOK_URL defined, skipping alert.")
+def send_slack_message(msg):
+    webhook_url = os.environ.get('SLACK_WEBHOOK_URL')
+    if not webhook_url:
+        print(f"No SLACK_WEBHOOK_URL defined. Log message: {msg}")
         return
 
-    # Extract info from context
+    payload = {
+        "text": msg,
+        "username": "Airflow",
+        "icon_emoji": ":airplane:"
+    }
+    try:
+        import requests
+        response = requests.post(webhook_url, json=payload)
+        response.raise_for_status()
+        print("Slack alert sent successfully.")
+    except Exception as e:
+        print(f"Failed to send Slack alert: {e}")
+
+def task_fail_slack_alert(context):
     dag_run = context.get('dag_run')
     task_instance = context.get('task_instance')
     date = context.get('execution_date')
@@ -37,27 +50,15 @@ def task_fail_slack_alert(context):
            f"*Dag*: {dag_run.dag_id}\n"
            f"*Execution Time*: {date}\n"
            f"*Log Url*: {task_instance.log_url}")
+    send_slack_message(msg)
 
-    import requests
-    import json
-    
-    webhook_url = os.environ.get('SLACK_WEBHOOK_URL')
-    if not webhook_url:
-        print("No SLACK_WEBHOOK_URL defined, skipping alert.")
-        return
+def notify_training_success():
+    msg = ":white_check_mark: *Model Training Success!*\nThe Flight Fare Prediction model has been retrained and the new version is now saved for production."
+    send_slack_message(msg)
 
-    payload = {
-        "text": msg,
-        "username": "Airflow",
-        "icon_emoji": ":airplane:"
-    }
-
-    try:
-        response = requests.post(webhook_url, json=payload)
-        response.raise_for_status()
-        print("Slack alert sent successfully.")
-    except Exception as e:
-        print(f"Failed to send Slack alert: {e}")
+def notify_skipped():
+    msg = ":fast_forward: *Retraining Skipped*\nSmart check determined there is no significant new data to justify a retrain. Using existing model."
+    send_slack_message(msg)
 
 default_args = {
     'owner': 'airflow',
@@ -97,26 +98,38 @@ with DAG(
         python_callable=etl_process
     )
 
-    # Check if new data exists before training
-    check_new_data_task = BranchPythonOperator(
-        task_id='check_new_data',
+    # Smart Retraining Check
+    check_retrain_threshold_task = BranchPythonOperator(
+        task_id='check_retrain_threshold',
         python_callable=check_new_data_exists
     )
 
     # ML Training Task - Only runs if new data exists
     train_model_task = BashOperator(
         task_id='train_ml_model',
-        bash_command='cd /opt/airflow/ml_pipeline && python run_pipeline.py',
+        bash_command='cd /opt/airflow/ml_pipeline && pip install --no-cache-dir -r requirements.txt && python run_pipeline.py',
         env={
             'DATA_SOURCE': 'postgres',  # Force database source
+            'DB_USER': 'analytics_user',
+            'DB_PASSWORD': 'analytics_password',
+            'DB_HOST': 'postgres_analytics',
+            'DB_PORT': '5432',
+            'DB_NAME': 'flight_analytics',
         }
     )
 
-    # Dummy task for when training is skipped
-    skip_training_task = DummyOperator(
-        task_id='skip_training'
+    # Notification tasks
+    success_notif_task = PythonOperator(
+        task_id='notify_success',
+        python_callable=notify_training_success
     )
 
-    # Pipeline Flow: ETL → Check New Data → [Train Model OR Skip]
-    start_task >> ingest_task >> validate_task >> etl_task >> check_new_data_task
-    check_new_data_task >> [train_model_task, skip_training_task]
+    skip_notif_task = PythonOperator(
+        task_id='skip_training_notification',
+        python_callable=notify_skipped
+    )
+
+    # Pipeline Flow: ETL → Check Retraining (Smart Trigger) → [Train Model OR Skip]
+    start_task >> ingest_task >> validate_task >> etl_task >> check_retrain_threshold_task
+    check_retrain_threshold_task >> train_model_task >> success_notif_task
+    check_retrain_threshold_task >> skip_notif_task

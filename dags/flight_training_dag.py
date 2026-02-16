@@ -1,7 +1,15 @@
 from airflow import DAG
+from airflow.operators.python import BranchPythonOperator
 from airflow.operators.bash import BashOperator
+from airflow.operators.dummy import DummyOperator
 from airflow.utils.dates import days_ago
 from datetime import timedelta
+import sys
+import os
+
+# Ensure scripts can be imported
+sys.path.append('/opt/airflow/scripts')
+from check_retrain_threshold import check_new_data_exists
 
 # Default arguments for the DAG
 default_args = {
@@ -10,7 +18,7 @@ default_args = {
     'email': ['admin@example.com'],
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 1,
+    'retries': 0,
     'retry_delay': timedelta(minutes=5),
 }
 
@@ -18,27 +26,37 @@ default_args = {
 with DAG(
     'flight_fare_retraining',
     default_args=default_args,
-    description='Retrain Flight Fare Prediction Model using latest data from Postgres',
-    schedule_interval='@daily', # Run once a day
+    description='Smart Retraining for Flight Fare Prediction Model',
+    schedule_interval='@daily',
     start_date=days_ago(1),
     catchup=False,
-    tags=['ml', 'flight_fare'],
+    tags=['ml', 'flight_fare', 'smart_retraining'],
 ) as dag:
 
-    # Task 1: Run the Training Pipeline
-    # We assume the project directory is mounted to /opt/airflow/ml_pipeline
-    # We also assume the dependencies are installed in the environment where Airflow runs
-    # or inside a virtualenv we can access.
-    # For simplicity, we use the system python or a specific venv if known.
-    train_model = BashOperator(
-        task_id='train_model',
+    # Task 1: Check if new data meets the threshold for retraining
+    check_retrain_task = BranchPythonOperator(
+        task_id='check_retrain_threshold',
+        python_callable=check_new_data_exists
+    )
+
+    # Task 2: Run the Training Pipeline (Only if threshold met)
+    train_model_task = BashOperator(
+        task_id='train_ml_model',
         bash_command='cd /opt/airflow/ml_pipeline && python run_pipeline.py',
         env={
-            'DATA_SOURCE': 'postgres', # Force DB source for Airflow runs
-            # Pass other env vars if needed, or rely on .env file loading in config.py
+            'DATA_SOURCE': 'postgres',
+            'DB_USER': 'analytics_user',
+            'DB_PASSWORD': 'analytics_password',
+            'DB_HOST': 'postgres_analytics',
+            'DB_PORT': '5432',
+            'DB_NAME': 'flight_analytics',
         }
     )
 
-    # Future Task: validation, deployment, etc.
-    
-    train_model
+    # Task 3: Skip Training (Dummy Task)
+    skip_training_task = DummyOperator(
+        task_id='skip_training'
+    )
+
+    # DAG Flow
+    check_retrain_task >> [train_model_task, skip_training_task]
