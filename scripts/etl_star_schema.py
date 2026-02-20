@@ -2,10 +2,21 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 import os
 
-# Connection Strings
-MYSQL_CONN = 'mysql+mysqlconnector://staging_user:staging_password@mysql_staging:3306/flight_staging'
-POSTGRES_CONN = 'postgresql+psycopg2://analytics_user:analytics_password@postgres_analytics:5432/flight_analytics'
-# Option B: Transform in MySQL -> Load to Postgres
+# Connection Strings from Environment Variables
+DB_USER = os.getenv('DB_USER', 'analytics_user')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'analytics_password')
+DB_HOST = os.getenv('DB_HOST', 'postgres_analytics')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME', 'flight_analytics')
+
+STAGING_USER = os.getenv('STAGING_USER', 'staging_user')
+STAGING_PASSWORD = os.getenv('STAGING_PASSWORD', 'staging_password')
+STAGING_HOST = os.getenv('STAGING_HOST', 'mysql_staging')
+
+MYSQL_CONN = f'mysql+mysqlconnector://{STAGING_USER}:{STAGING_PASSWORD}@{STAGING_HOST}:3306/flight_staging'
+POSTGRES_CONN = f'postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+
+# Transform in MySQL -> Load to Postgres
 SQL_SCRIPT_PATH = '/opt/airflow/sql/etl_star_schema_mysql.sql'
 
 def etl_process():
@@ -130,14 +141,45 @@ def etl_process():
             if not df_fact.empty:
                 df_fact.to_sql('fact_flights', pg_engine, if_exists='append', index=False, method='multi', chunksize=5000)
                 print(f"Loaded {len(df_fact)} new rows into fact_flights at {current_time}.")
+                fact_loaded = len(df_fact)
             else:
                 print("No new unique records to load.")
+                fact_loaded = 0
         
         print("ETL Complete: Incremental Data loaded into PostgreSQL.")
+        
+        # Return metrics for tracking
+        return {
+            'fact_records_loaded': fact_loaded,
+            'dimensions_loaded': dimension_tables
+        }
         
     except Exception as e:
         print(f"Error transferring data: {e}")
         raise e
 
+def etl_process_wrapper(**context):
+    """
+    Wrapper function for Airflow with XCom support.
+    Calls etl_process() and pushes metrics to XCom.
+    """
+    ti = context['ti']
+    
+    # Pull validation metrics from previous task
+    records_validated = ti.xcom_pull(task_ids='validate_data', key='records_validated')
+    if records_validated:
+        print(f"📊 Received from validation: {records_validated} validated records")
+    
+    result = etl_process()
+    
+    if result and isinstance(result, dict):
+        ti.xcom_push(key='fact_records_loaded', value=result.get('fact_records_loaded', 0))
+        ti.xcom_push(key='dimensions_loaded', value=result.get('dimensions_loaded', []))
+        
+        print(f"✅ XCom Metrics Pushed: {result.get('fact_records_loaded', 0)} fact records loaded")
+    
+    return result
+
 if __name__ == "__main__":
     etl_process()
+

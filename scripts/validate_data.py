@@ -56,9 +56,38 @@ def validate_data():
         df_final.to_sql('clean_flight_data', con=engine, if_exists='replace', index=False)
         print("Validated data saved to 'clean_flight_data' table.")
         
+        # Return metrics for tracking
+        return {
+            'initial_count': initial_count,
+            'validated_count': len(df_final),
+            'rejected_count': initial_count - len(df_final)
+        }
+        
     except Exception as e:
         print(f"Error during validation: {e}")
         raise e
+
+def validate_data_wrapper(**context):
+    """
+    Wrapper function for Airflow with XCom support.
+    Calls validate_data() and pushes metrics to XCom.
+    """
+    ti = context['ti']
+    
+    # Pull ingestion metrics from previous task
+    records_ingested = ti.xcom_pull(task_ids='ingest_data', key='records_ingested')
+    if records_ingested:
+        print(f"📊 Received from ingestion: {records_ingested} records")
+    
+    result = validate_data()
+    
+    if result and isinstance(result, dict):
+        ti.xcom_push(key='records_validated', value=result.get('validated_count', 0))
+        ti.xcom_push(key='records_rejected', value=result.get('rejected_count', 0))
+        
+        print(f"✅ XCom Metrics Pushed: {result.get('validated_count', 0)} validated, {result.get('rejected_count', 0)} rejected")
+    
+    return result
 
 if __name__ == "__main__":
     validate_data()

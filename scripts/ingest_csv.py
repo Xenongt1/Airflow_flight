@@ -109,9 +109,34 @@ def ingest_data():
         else:
             print("No new data found. All rows already exist in DB.")
         
+        # Return metrics for tracking
+        return {
+            'initial_count': initial_count,
+            'filtered_count': filtered_count,
+            'skipped_count': initial_count - filtered_count
+        }
+        
     except Exception as e:
         print(f"Error during ingestion: {e}")
         raise e
 
+def ingest_data_wrapper(**context):
+    """
+    Wrapper function for Airflow with XCom support.
+    Calls ingest_data() and pushes metrics to XCom.
+    """
+    result = ingest_data()
+    
+    if result and isinstance(result, dict):
+        ti = context['ti']
+        ti.xcom_push(key='records_initial', value=result.get('initial_count', 0))
+        ti.xcom_push(key='records_ingested', value=result.get('filtered_count', 0))
+        ti.xcom_push(key='records_skipped', value=result.get('skipped_count', 0))
+        
+        print(f"✅ XCom Metrics Pushed: {result.get('filtered_count', 0)} ingested, {result.get('skipped_count', 0)} skipped")
+    
+    return result
+
 if __name__ == "__main__":
     ingest_data()
+

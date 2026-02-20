@@ -106,7 +106,7 @@ def check_new_data_exists():
                 print(f"⏭️  New records ({new_records:,}) below minimum required ({MIN_RECORDS_FOR_TRAINING:,})")
                 print("Decision: SKIP TRAINING")
                 print("=" * 60)
-                return 'skip_training'
+                return 'skip_training_notification'
             
             if percentage_change >= RETRAIN_THRESHOLD_PERCENT:
                 print(f"✅ Growth ({percentage_change:.2f}%) meets threshold ({RETRAIN_THRESHOLD_PERCENT:.2f}%)")
@@ -117,14 +117,14 @@ def check_new_data_exists():
                 print(f"⏭️  Growth ({percentage_change:.2f}%) below threshold")
                 print("Decision: SKIP TRAINING")
                 print("=" * 60)
-                return 'skip_training'
+                return 'skip_training_notification'
                 
     except Exception as e:
         print(f"❌ Error checking for new data: {e}")
         print("Decision: SKIP TRAINING (error occurred)")
         print("=" * 60)
         # Return skip on error to avoid unnecessary training attempts
-        return 'skip_training'
+        return 'skip_training_notification'
 
 if __name__ == "__main__":
     result = check_new_data_exists()
